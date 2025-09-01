@@ -26,6 +26,18 @@ class Sort(str, Enum):
     DURATION = "duration"
     DISTANCE = "distance"
 
+class MultiFlightUser(CustomModel):
+    username:      str|None = None
+    seat:          SeatType|None = None
+    aircraft_side: AircraftSide|None = None
+    ticket_class:  ClassType|None = None
+    purpose:       FlightPurpose|None = None
+    notes:         str|None = None
+
+class FlightCreateRequest(FlightModel):
+    users: list[MultiFlightUser] | None = None
+
+
 async def check_flight_authorization(id: int, user: User) -> None:
     res = database.execute_read_query(f"SELECT username FROM flights WHERE id = ?;", [id])
     flight_username = res[0][0]
@@ -89,8 +101,62 @@ def duration(departure: datetime.datetime, arrival: datetime.datetime) -> int:
     delta_minutes = delta.seconds // 60
     return delta_minutes
 
-@router.post("", status_code=201)
-async def add_flight(flight: FlightModel, timezones: bool = True, user: User = Depends(get_current_user)) -> int:
+@router.post(
+    "",
+    status_code=201,
+    response_model=list[int],
+    summary="Add flight(s)",
+    description=(
+        "Create flight rows for one or more users in a single call. "
+        "Always include a top-level 'users' array with per-user fields (username, seat, aircraftSide, ticketClass, purpose, notes). "
+        "Admins may set 'username' for other users; non-admins can only create for themselves."
+    ),
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "single_user": {
+                            "summary": "Single user",
+                            "value": {
+                                "date": "2025-08-01",
+                                "origin": "KJFK",
+                                "destination": "KLAX",
+                                "departureTime": "08:00",
+                                "arrivalTime": "11:05",
+                                "airline": "AAL",
+                                "flightNumber": "AA123",
+                                "users": [ { "seat": "aisle", "ticketClass": "economy", "purpose": "business" } ]
+                            }
+                        },
+                        "multi_user": {
+                            "summary": "Multiple users (admin)",
+                            "value": {
+                                "date": "2025-08-01",
+                                "origin": "KJFK",
+                                "destination": "KLAX",
+                                "departureTime": "08:00",
+                                "arrivalTime": "11:05",
+                                "airline": "AAL",
+                                "flightNumber": "AA123",
+                                "users": [
+                                    {"username": "admin", "seat": "aisle", "ticketClass": "economy", "purpose": "business"},
+                                    {"username": "alice", "seat": "window", "ticketClass": "economy+", "purpose": "leisure"}
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
+
+async def add_flight(
+    flight: FlightCreateRequest,
+    timezones: bool = True,
+    user: User = Depends(get_current_user)
+) -> list[int]:
     if not (flight.date and flight.origin and flight.destination):
         raise HTTPException(status_code=404,
                             detail="Insufficient flight data. Date, Origin, and Destination are required")
@@ -122,15 +188,35 @@ async def add_flight(flight: FlightModel, timezones: bool = True, user: User = D
     query = query[:-1]
     query += ") RETURNING id;"
 
-    # only admins may add flights for other users
-    if flight.username and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Only admins can add flights for other users")
+    # Must contain a 'users' array; insert one flight per traveler with per-user fields
+    body_users: list[MultiFlightUser] | None = getattr(flight, 'users', None)
+    if not body_users or len(body_users) == 0:
+        raise HTTPException(status_code=400, detail="'users' must contain at least one traveler")
 
-    explicit = {"username": user.username} if not flight.username else {}
-    values = flight.get_values(ignore=["id"], explicit=explicit)
+    if body_users:
+        created_ids: list[int] = []
+        for traveler in body_users:
+            target_username = traveler.username if traveler.username else user.username
 
-    new_id = database.execute_query(query, values)[0]
-    return new_id
+            if target_username != user.username and not user.is_admin:
+                raise HTTPException(status_code=403, detail="You are not authorized to add flights for other users")
+
+            explicit = {
+                "username": target_username,
+                "seat": traveler.seat,
+                "aircraft_side": traveler.aircraft_side,
+                "ticket_class": traveler.ticket_class,
+                "purpose": traveler.purpose,
+                "notes": traveler.notes,
+            }
+            ignore_fields = ["id"]
+            if "users" in type(flight).__fields__:
+                ignore_fields.append("users")
+            values = flight.get_values(ignore=ignore_fields, explicit=explicit)
+            new_id = database.execute_query(query, values)[0]
+            created_ids.append(new_id)
+
+        return created_ids
 
 class FlightPatchModel(CustomModel):
     date:             datetime.date|None = None
