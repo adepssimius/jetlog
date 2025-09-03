@@ -101,62 +101,18 @@ def duration(departure: datetime.datetime, arrival: datetime.datetime) -> int:
     delta_minutes = delta.seconds // 60
     return delta_minutes
 
-@router.post(
-    "",
-    status_code=201,
-    response_model=list[int],
-    summary="Add flight(s)",
-    description=(
-        "Create flight rows for one or more users in a single call. "
-        "Always include a top-level 'users' array with per-user fields (username, seat, aircraftSide, ticketClass, purpose, notes). "
-        "Admins may set 'username' for other users; non-admins can only create for themselves."
-    ),
-    openapi_extra={
-        "requestBody": {
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "single_user": {
-                            "summary": "Single user",
-                            "value": {
-                                "date": "2025-08-01",
-                                "origin": "KJFK",
-                                "destination": "KLAX",
-                                "departureTime": "08:00",
-                                "arrivalTime": "11:05",
-                                "airline": "AAL",
-                                "flightNumber": "AA123",
-                                "users": [ { "seat": "aisle", "ticketClass": "economy", "purpose": "business" } ]
-                            }
-                        },
-                        "multi_user": {
-                            "summary": "Multiple users (admin)",
-                            "value": {
-                                "date": "2025-08-01",
-                                "origin": "KJFK",
-                                "destination": "KLAX",
-                                "departureTime": "08:00",
-                                "arrivalTime": "11:05",
-                                "airline": "AAL",
-                                "flightNumber": "AA123",
-                                "users": [
-                                    {"username": "admin", "seat": "aisle", "ticketClass": "economy", "purpose": "business"},
-                                    {"username": "alice", "seat": "window", "ticketClass": "economy+", "purpose": "leisure"}
-                                ]
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-)
+@router.post("/many", status_code=201)
+async def add_many_flights(flights: list[FlightModel], timezones: bool = True, user: User = Depends(get_current_user)) -> int:
+    creator_flight_id = -1
+    for flight in flights:
+        flight_id = await add_flight(flight, timezones, user)
+        if flight.username == user.username:
+            creator_flight_id = flight_id
 
-async def add_flight(
-    flight: FlightCreateRequest,
-    timezones: bool = True,
-    user: User = Depends(get_current_user)
-) -> list[int]:
+    return creator_flight_id
+
+@router.post("", status_code=201)
+async def add_flight(flight: FlightModel, timezones: bool = True, user: User = Depends(get_current_user)) -> int:
     if not (flight.date and flight.origin and flight.destination):
         raise HTTPException(status_code=404,
                             detail="Insufficient flight data. Date, Origin, and Destination are required")

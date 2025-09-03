@@ -9,87 +9,70 @@ import { Airline, Airport, User } from '../models';
 import ConfigStorage from '../storage/configStorage';
 import FetchConnection from '../components/FetchConnection';
 
-// Module-level option lists and traveler fields component to avoid remounting on each render
-const seatOptions = [
-    { text: "Choose", value: "" },
-    { text: "Aisle", value: "aisle" },
-    { text: "Middle", value: "middle" },
-    { text: "Window", value: "window" }
-];
-const sideOptions = [
-    { text: "Choose", value: "" },
-    { text: "Left", value: "left" },
-    { text: "Right", value: "right" },
-    { text: "Center", value: "center" }
-];
-const classOptions = [
-    { text: "Choose", value: "" },
-    { text: "Private", value: "private" },
-    { text: "First", value: "first" },
-    { text: "Business", value: "business" },
-    { text: "Economy+", value: "economy+" },
-    { text: "Economy", value: "economy" }
-];
-const purposeOptions = [
-    { text: "Choose", value: "" },
-    { text: "Leisure", value: "leisure" },
-    { text: "Business", value: "business" },
-    { text: "Crew", value: "crew" },
-    { text: "Other", value: "other" }
-];
-
-function TravelerFields({ username, values, onChange }: {
-    username: string,
-    values: { seat?: string; aircraftSide?: string; ticketClass?: string; purpose?: string; notes?: string } | undefined,
-    onChange: (username: string, field: 'seat'|'aircraftSide'|'ticketClass'|'purpose'|'notes', value: string) => void
-}) {
+function TravelerFields({ username }: { username: string }) {
     return (
         <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-                <div>
-                    <Label text="Seat Type" />
-                    <Select
-                        value={values?.seat || ''}
-                        onChange={(e) => onChange(username, 'seat', e.target.value)}
-                        options={seatOptions}
-                    />
-                </div>
-                <div>
-                    <Label text="Aircraft Side" />
-                    <Select
-                        value={values?.aircraftSide || ''}
-                        onChange={(e) => onChange(username, 'aircraftSide', e.target.value)}
-                        options={sideOptions}
-                    />
-                </div>
-                <div>
-                    <Label text="Class" />
-                    <Select
-                        value={values?.ticketClass || ''}
-                        onChange={(e) => onChange(username, 'ticketClass', e.target.value)}
-                        options={classOptions}
-                    />
-                </div>
-                <div>
-                    <Label text="Purpose" />
-                    <Select
-                        value={values?.purpose || ''}
-                        onChange={(e) => onChange(username, 'purpose', e.target.value)}
-                        options={purposeOptions}
-                    />
-                </div>
-            </div>
-            <div className="mt-2">
-                <Label text="Notes" />
-                <textarea
-                    rows={5}
-                    className="w-full px-1 mb-4 bg-white rounded-none outline-none font-mono box-border border-2 border-gray-200 focus:border-primary-400"
-                    name={`notes__${username}`}
-                    defaultValue={values?.notes || ''}
-                    maxLength={150}
-                    onChange={(e) => onChange(username, 'notes', e.target.value)}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+            <div>
+                <Label text="Seat Type" />
+                <Select
+                    name={`seat__${username}`}
+                    options={[
+                        { text: "Choose", value: "" },
+                        { text: "Aisle", value: "aisle" },
+                        { text: "Middle", value: "middle" },
+                        { text: "Window", value: "window" }
+                    ]}
                 />
             </div>
+            <div>
+                <Label text="Aircraft Side" />
+                <Select
+                    name={`aircraftSide__${username}`}
+                    options={[
+                        { text: "Choose", value: "" },
+                        { text: "Left", value: "left" },
+                        { text: "Right", value: "right" },
+                        { text: "Center", value: "center" }
+                    ]}
+                />
+            </div>
+            <div>
+                <Label text="Class" />
+                <Select
+                    name={`ticketClass__${username}`}
+                    options={[
+                        { text: "Choose", value: "" },
+                        { text: "Private", value: "private" },
+                        { text: "First", value: "first" },
+                        { text: "Business", value: "business" },
+                        { text: "Economy+", value: "economy+" },
+                        { text: "Economy", value: "economy" }
+                    ]}
+                />
+            </div>
+            <div>
+                <Label text="Purpose" />
+                <Select
+                    name={`purpose__${username}`}
+                    options={[
+                        { text: "Choose", value: "" },
+                        { text: "Leisure", value: "leisure" },
+                        { text: "Business", value: "business" },
+                        { text: "Crew", value: "crew" },
+                        { text: "Other", value: "other" }
+                    ]}
+                />
+            </div>
+        </div>
+        <div>
+            <Label text="Notes"/>
+            <TextArea 
+                name={`notes__${username}`}
+                placeholder="Type here..." 
+                maxLength={150}
+            />
+        </div>
         </>
     );
 }
@@ -106,94 +89,65 @@ export default function New() {
 
     // delegation (admin-only for now)
     const [currentUser, setCurrentUser] = useState<User | undefined>();
-    const [allUsers, setAllUsers] = useState<string[] | undefined>();
+    const [allUsernames, setAllUsernames] = useState<string[] | undefined>();
     const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
-    const [perUser, setPerUser] = useState<Record<string, {
-        seat?: string;
-        aircraftSide?: string;
-        ticketClass?: string;
-        purpose?: string;
-        notes?: string;
-    }>>({});
 
     const localAirportTime = ConfigStorage.getSetting("localAirportTime");
 
     useEffect(() => {
         // Get current user; if admin, load users list
+        // Own username cannot be unselected because 
+        // delegation should be used when multiple users
+        // board the same flight
         API.get('/users/me').then((me: User) => {
             setCurrentUser(me);
             setSelectedUsernames([me.username]);
-            setPerUser((prev) => ({ ...prev, [me.username]: prev[me.username] || {} }));
             if (me.isAdmin) {
-                API.get('/users').then((users: string[]) => setAllUsers(users));
+                API.get('/users')
+                .then((users: string[]) => {
+                    users = users.filter(username => username !== me.username);
+                    setAllUsernames(users);
+                });
             }
         });
     }, []);
 
-    const toggleSelected = (username: string) => {
-        setSelectedUsernames((prev) => {
-            const isSelected = prev.includes(username);
-            if (isSelected) {
-                // prevent empty selection; keep at least one user selected
-                if (prev.length === 1) return prev;
-                return prev.filter(u => u !== username);
-            }
-
-            // Prefill newly-added user's traveler fields from current user's (or the first selected)
-            setPerUser((prevPU) => {
-                if (prevPU[username]) return prevPU;
-                let templateUser: string | undefined = undefined;
-                if (currentUser && prevPU[currentUser.username]) templateUser = currentUser.username;
-                else if (prev.length > 0) templateUser = prev[0];
-
-                const template = templateUser ? prevPU[templateUser] : {};
-                return { ...prevPU, [username]: { ...(template || {}) } };
-            });
-
-            return [...prev, username];
-        });
-    };
-
-    const setPerUserField = (username: string, field: 'seat'|'aircraftSide'|'ticketClass'|'purpose'|'notes', value: string) => {
-        setPerUser((prev) => ({
-            ...prev,
-            [username]: { ...(prev[username] || {}), [field]: value || undefined },
-        }));
-    };
-
-    
-
     const postFlight = async (event) => {
         event.preventDefault();
 
-        const flightData = objectFromForm(event);
-
-        if (flightData === null) {
+        const rawFormData = objectFromForm(event);
+        if (rawFormData === null) {
             return;
         }
 
-        // Build a single payload for multi-user creation
-        const users = selectedUsernames.map((u) => {
-            const noteKey = `notes__${u}`;
-            const notes = (flightData as any)[noteKey] ?? perUser[u]?.notes;
-            return {
-            username: currentUser?.isAdmin ? u : undefined,
-            seat: perUser[u]?.seat,
-            aircraftSide: perUser[u]?.aircraftSide,
-            ticketClass: perUser[u]?.ticketClass,
-            purpose: perUser[u]?.purpose,
-            notes,
-        };
+        // Build payload from form data
+        const sharedFields = ["airline", "origin", "destination", "date", "flightNumber"];
+        let payload = selectedUsernames.map(selectedUsername => {
+            var userFlight = { username: selectedUsername };
+
+            for (const sharedField of sharedFields) {
+                userFlight[sharedField] = rawFormData[sharedField];
+            }
+
+            for (const [key, value] of Object.entries(rawFormData)) {
+                const [field, user] = key.split("__");
+                if (user == selectedUsername) {
+                    userFlight[field] = value;
+                }
+            }
+
+            return userFlight;
         });
 
-        const payload = { ...flightData, users };
-        const result = await API.post(`/flights?timezones=${localAirportTime}`, payload);
-        const ids: number[] = Array.isArray(result) ? result : [result];
+        console.log(payload);
 
-        // pick current user's ID if present; else first
-        const idx = selectedUsernames.findIndex(u => u === currentUser?.username);
-        const targetId = idx >= 0 ? ids[idx] : ids[0];
-        navigate(`/flights?id=${targetId}`);
+        if (payload.length == 1) {
+            API.post(`/flights?timezones=${localAirportTime}`, payload[0])
+            .then(flightID => navigate(`/flights?id=${flightID})`));
+        } else {
+            API.post(`/flights/many?timezones=${localAirportTime}`, payload)
+            .then(creatorFlightID => navigate(`/flights?id=${creatorFlightID}`));
+        }
     };
 
     const attemptFetchFlight = async () => {
@@ -308,36 +262,30 @@ export default function New() {
                     </div>
                 </div>
 
-                {currentUser?.isAdmin && allUsers && (
+                {currentUser?.isAdmin && allUsernames && (
                     <div className="px-4 pb-2">
                         <Label text="Add flight for users" />
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2">
-                            {[...(allUsers || [])].sort((a, b) => {
-                                if (currentUser && a === currentUser.username) return -1;
-                                if (currentUser && b === currentUser.username) return 1;
-                                return a.localeCompare(b);
-                            }).map((u) => (
-                                <label key={u} className="flex items-center gap-2">
+                            {allUsernames.map((username) => (
+                                <label key={username} className="flex items-center gap-2">
                                     <input
                                         type="checkbox"
-                                        name="usernames_checkbox"
-                                        checked={selectedUsernames.includes(u)}
-                                        onChange={() => toggleSelected(u)}
+                                        checked={selectedUsernames.includes(username)}
+                                        onChange={() => setSelectedUsernames((prev) => {
+                                            if (prev.includes(username)) return prev.filter(u => u !== username);
+                                            return [...prev, username];
+                                        })}
                                     />
-                                    <span>{u}</span>
+                                    <span>{username}</span>
                                 </label>
                             ))}
                         </div>
-                        {/* Per-user traveler inputs */}
-                        <div className="mt-4 space-y-4">
-                            {[...selectedUsernames].sort((a, b) => {
-                                if (currentUser && a === currentUser.username) return -1;
-                                if (currentUser && b === currentUser.username) return 1;
-                                return a.localeCompare(b);
-                            }).map((u) => (
-                                <div key={u} className="container">
-                                    <div className="font-medium mb-2">Traveler: {u}</div>
-                                    <TravelerFields username={u} values={perUser[u]} onChange={setPerUserField} />
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
+                            {selectedUsernames.map((selectedUsername) => (
+                                <div key={selectedUsername} className="container">
+                                    <div className="font-medium mb-2">Traveler: {selectedUsername}</div>
+                                    <TravelerFields username={selectedUsername} />
                                 </div>
                             ))}
                         </div>
@@ -348,7 +296,7 @@ export default function New() {
                     <div className="px-4 pb-2">
                         <div className="container">
                         <Label text="Traveler Details" />
-                        <TravelerFields username={currentUser.username} values={perUser[currentUser.username]} onChange={setPerUserField} />
+                        <TravelerFields username={currentUser.username} />
                         </div>
                     </div>
                 )}
