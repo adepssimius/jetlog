@@ -93,6 +93,10 @@ def duration(departure: datetime.datetime, arrival: datetime.datetime) -> int:
 async def add_many_flights(flights: list[FlightModel], timezones: bool = True, user: User = Depends(get_current_user)) -> int:
     creator_flight_id = -1
     for flight in flights:
+        if flight.username != user.username:
+            if not user.is_admin:
+                raise HTTPException(status_code=403, detail="Only admins can add flights for other users")
+
         flight_id = await add_flight(flight, timezones, user)
         if flight.username == user.username:
             creator_flight_id = flight_id
