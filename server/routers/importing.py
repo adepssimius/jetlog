@@ -1,5 +1,5 @@
 from server.models import FlightModel, FlightPurpose, SeatType, ClassType, User
-from server.routers.flights import add_flight, MultiFlightUser, FlightCreateRequest
+from server.routers.flights import add_flight
 from server.internal.airport_utils import get_icao_from_iata
 from server.internal.flight_utils import flight_already_exists
 from server.auth.users import get_current_user
@@ -272,41 +272,8 @@ async def import_CSV(csv_type: CSVType,
     for i in range(len(imported_flights)):
         progress = f"[{i+1}/{len(imported_flights)}]" 
         try:
-            base: FlightModel = imported_flights[i]
-            # Build create request with a single traveler (the importing user)
-            req = FlightCreateRequest(
-                id=None,
-                username=None,
-                date=base.date,
-                origin=base.origin,
-                destination=base.destination,
-                departure_time=base.departure_time,
-                arrival_time=base.arrival_time,
-                arrival_date=base.arrival_date,
-                seat=None,
-                aircraft_side=None,
-                ticket_class=None,
-                purpose=None,
-                duration=base.duration,
-                distance=base.distance,
-                airplane=base.airplane,
-                airline=base.airline,
-                tail_number=base.tail_number,
-                flight_number=base.flight_number,
-                notes=None,
-                connection=base.connection,
-                users=[MultiFlightUser(
-                    username=user.username,
-                    seat=base.seat,
-                    aircraft_side=base.aircraft_side,
-                    ticket_class=base.ticket_class,
-                    purpose=base.purpose,
-                    notes=base.notes,
-                )]
-            )
-
-            ids = await add_flight(req, user=user)
-            print(f"{progress} Successfully added flight (id: {ids[0]})")
+            res = await add_flight(imported_flights[i], user=user)
+            print(f"{progress} Successfully added flight (id: {res})")
         except HTTPException as e:
             print(f"{progress} Failed import: {e.detail}")
             fail_count += 1

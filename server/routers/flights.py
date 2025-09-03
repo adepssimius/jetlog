@@ -26,18 +26,6 @@ class Sort(str, Enum):
     DURATION = "duration"
     DISTANCE = "distance"
 
-class MultiFlightUser(CustomModel):
-    username:      str|None = None
-    seat:          SeatType|None = None
-    aircraft_side: AircraftSide|None = None
-    ticket_class:  ClassType|None = None
-    purpose:       FlightPurpose|None = None
-    notes:         str|None = None
-
-class FlightCreateRequest(FlightModel):
-    users: list[MultiFlightUser] | None = None
-
-
 async def check_flight_authorization(id: int, user: User) -> None:
     res = database.execute_read_query(f"SELECT username FROM flights WHERE id = ?;", [id])
     flight_username = res[0][0]
@@ -144,35 +132,15 @@ async def add_flight(flight: FlightModel, timezones: bool = True, user: User = D
     query = query[:-1]
     query += ") RETURNING id;"
 
-    # Must contain a 'users' array; insert one flight per traveler with per-user fields
-    body_users: list[MultiFlightUser] | None = getattr(flight, 'users', None)
-    if not body_users or len(body_users) == 0:
-        raise HTTPException(status_code=400, detail="'users' must contain at least one traveler")
+    # only admins may add flights for other users
+    if flight.username and not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can add flights for other users")
 
-    if body_users:
-        created_ids: list[int] = []
-        for traveler in body_users:
-            target_username = traveler.username if traveler.username else user.username
+    explicit = {"username": user.username} if not flight.username else {}
+    values = flight.get_values(ignore=["id"], explicit=explicit)
 
-            if target_username != user.username and not user.is_admin:
-                raise HTTPException(status_code=403, detail="You are not authorized to add flights for other users")
-
-            explicit = {
-                "username": target_username,
-                "seat": traveler.seat,
-                "aircraft_side": traveler.aircraft_side,
-                "ticket_class": traveler.ticket_class,
-                "purpose": traveler.purpose,
-                "notes": traveler.notes,
-            }
-            ignore_fields = ["id"]
-            if "users" in type(flight).__fields__:
-                ignore_fields.append("users")
-            values = flight.get_values(ignore=ignore_fields, explicit=explicit)
-            new_id = database.execute_query(query, values)[0]
-            created_ids.append(new_id)
-
-        return created_ids
+    new_id = database.execute_query(query, values)[0]
+    return new_id
 
 class FlightPatchModel(CustomModel):
     date:             datetime.date|None = None

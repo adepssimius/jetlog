@@ -166,18 +166,14 @@ function Option({text, value}: OptionProps) {
 interface SelectProps {
     name?: string;
     options: OptionProps[];
-    value?: string;
-    onChange?: ((event: ChangeEvent<HTMLSelectElement>) => any) | null;
 }
 export function Select({name, options}: SelectProps) {
     return (
         <select className="px-1 py-0.5 mb-4 bg-white rounded-none outline-none font-mono bg-white box-border 
                 border-b-2 border-gray-200 focus:border-primary-400"
-                name={name}
-                value={value}
-                onChange={onChange ? onChange : () => {}}>
+                name={name}>
             { options.map((option) => (
-                <Option key={(option.value ?? option.text)} text={option.text} value={option.value}/>  
+                <Option text={option.text} value={option.value}/>  
             ))} 
         </select>
     );
