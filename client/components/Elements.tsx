@@ -113,7 +113,7 @@ export function Input({ type,
     );
 }
 
-interface TextAreaProps {
+interface TextAreaProps {
     name?: string;
     defaultValue?: string;
     placeholder?: string;
@@ -167,8 +167,7 @@ interface SelectProps {
     name?: string;
     options: OptionProps[];
 }
-export function Select({name, 
-                        options }: SelectProps) {
+export function Select({name, options}: SelectProps) {
     return (
         <select className="px-1 py-0.5 mb-4 bg-white rounded-none outline-none font-mono bg-white box-border 
                 border-b-2 border-gray-200 focus:border-primary-400"
