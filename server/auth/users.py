@@ -4,7 +4,6 @@ from server.models import CustomModel, User
 from server.database import database
 from server.auth.context import METADATA_READ
 from server.auth.dependencies import (
-    get_current_user,
     require_primary_auth,
     require_scope,
 )
